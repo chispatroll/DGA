@@ -8,7 +8,7 @@ from datetime import timedelta
 
 # --- CONFIGURACIÓN ---
 RUTA_DATOS_RAW = Path(r"E:\13_DGA\Modelo_termico\data")
-RUTA_SALIDA = Path("data/SE_processed_Tidy")  # Carpeta nueva para formato limpio
+RUTA_SALIDA = Path(r"E:\13_DGA\Demo_Normas_DGA\data\SE_Carga")
 KEYWORD_HEADER = "RETIROS (MWh)"
 
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
