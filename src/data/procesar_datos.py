@@ -74,9 +74,15 @@ def procesar_excel_a_tidy(f_handle, fecha_carpeta):
     # Identificamos columnas que NO son horas (las que mantendremos fijas)
     id_vars = ["Fecha", "Subestacion", "Max_Diario_MW", "Hora_Pico_Reg"]
 
-    # Las columnas de valor son todas las que NO están en id_vars
-    # (Asumimos que el resto son las horas 01:00, 02:00...)
-    value_vars = [c for c in df_clean.columns if c not in id_vars]
+    # --- CORRECCIÓN CRÍTICA AQUÍ ---
+    # Antes: Tomaba todo lo que sobraba (incluyendo la columna TOTAL).
+    # Ahora: Solo aceptamos columnas que sean estrictamente "DosNumeros:DosNumeros"
+    value_vars = [
+        c
+        for c in df_clean.columns
+        if c not in id_vars
+        and re.match(r"^\d{2}:\d{2}$", str(c).strip())  # <--- EL FILTRO NUEVO
+    ]
 
     df_melted = df_clean.melt(
         id_vars=id_vars,
