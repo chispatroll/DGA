@@ -4,13 +4,13 @@ import os
 
 # --- CONFIGURACIÓN ---
 # La carpeta donde están tus CSVs limpios (Tidy)
-CARPETA_DATOS = Path(r"E:\13_DGA\Demo_Normas_DGA\data\SE_Carga")
+CARPETA_DATOS = Path(r"D:\13_Proyecto\data\SE_Carga_3min")
 
 # 1. El nombre del archivo FINAL que quieres conservar (sin .csv)
-NOMBRE_CORRECTO = "Sucre - Fancesa"
+NOMBRE_CORRECTO = "EMVINTO - COMIBOL_3min"
 
 # 2. El nombre del archivo "VIEJO" o incorrecto que quieres absorber y borrar (sin .csv)
-NOMBRE_INCORRECTO = "Sucre - FANCESSA"
+NOMBRE_INCORRECTO = "EMVINTO_3min"
 
 
 def fusionar_archivos():
