@@ -1,5 +1,5 @@
 import pandas as pd
-import numpy as np
+
 
 # 1. Crear datos simulados (Horarios)
 fechas = pd.date_range(start="2025-01-01 00:00", periods=24, freq="h")
@@ -46,7 +46,7 @@ df_comparacion = df_resampled.loc[df_original.index]
 diferencia = df_comparacion["MW"] - df_original["MW"]
 max_error = diferencia.abs().max()
 
-print(f"🔍 ANÁLISIS DE ERROR DE RESAMPLEO (PCHIP)")
+print("🔍 ANÁLISIS DE ERROR DE RESAMPLEO (PCHIP)")
 print("-" * 40)
 print(f"Datos originales: {len(df_original)} puntos (cada 1 hora)")
 print(f"Datos resampleados: {len(df_resampled)} puntos (cada 3 min)")
