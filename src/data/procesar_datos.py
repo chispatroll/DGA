@@ -1,46 +1,103 @@
-import os
 import zipfile
 import pandas as pd
 from pathlib import Path
 import warnings
 import re
-from datetime import timedelta
+
+from datetime import datetime, timedelta
 
 # --- CONFIGURACIÓN ---
-RUTA_DATOS_RAW = Path(r"E:\13_DGA\Modelo_termico\data")
-RUTA_SALIDA = Path(r"E:\13_DGA\Demo_Normas_DGA\data\SE_Carga")
+RUTA_DATOS_RAW = Path(r"E:\13_DGA\Demo_Normas_DGA\data\cndc")
+RUTA_SALIDA = Path(r"E:\13_DGA\Demo_Normas_DGA\data\SE_Carga_3min")
+ARCHIVO_SUBESTACIONES = Path(
+    r"E:\13_DGA\Demo_Normas_DGA\data\subestacion_con_coordenadas.csv"
+)
 KEYWORD_HEADER = "RETIROS (MWh)"
 
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
 
-def procesar_excel_a_tidy(f_handle, fecha_carpeta):
-    """
-    Lee Excel, limpia y transforma DIRECTAMENTE a formato largo (Tidy).
-    Integra Maxima y Hora Pico en cada fila horaria.
-    """
-    # 1. Lectura rápida
-    df_raw = pd.read_excel(f_handle, header=None, engine="openpyxl")
+def cargar_subestaciones_objetivo():
+    """Carga la lista de subestaciones a procesar desde un CSV."""
+    if not ARCHIVO_SUBESTACIONES.exists():
+        print(
+            f"⚠️ No se encontró {ARCHIVO_SUBESTACIONES}. Se procesarán TODAS (No recomendado)."
+        )
+        return None
 
-    # 2. Búsqueda eficiente del header
-    fila_header = next(
-        (
-            idx
-            for idx, row in df_raw.head(50).iterrows()
-            if row.astype(str).str.contains(KEYWORD_HEADER, regex=False).any()
-        ),
-        None,
-    )
+    try:
+        df = pd.read_csv(ARCHIVO_SUBESTACIONES)
+        # Asumimos que la columna se llama 'Subestacion' o es la primera
+        col = "Subestacion" if "Subestacion" in df.columns else df.columns[0]
+        lista = df[col].astype(str).str.strip().unique().tolist()
+        print(f"🎯 Objetivo: {len(lista)} subestaciones cargadas.")
+        return lista
+    except Exception as e:
+        print(f"❌ Error al leer subestaciones: {e}")
+        return None
+
+
+def obtener_ultima_fecha_procesada():
+    """
+    Busca en los CSVs de salida la fecha más reciente procesada.
+    Retorna datetime o None.
+    """
+    if not RUTA_SALIDA.exists():
+        return None
+
+    fechas_maximas = []
+    # Escaneamos unos cuantos CSVs para ver dónde nos quedamos
+    # No hace falta leer todos, con ver uno actualizado basta si el proceso es consistente
+    csvs = list(RUTA_SALIDA.glob("*.csv"))
+
+    if not csvs:
+        return None
+
+    print("🕵️ Buscando última fecha procesada...")
+    for csv in csvs[:5]:  # Revisamos los primeros 5 para no tardar
+        try:
+            # Leemos solo las ultimas filas para ser rápido
+            df = pd.read_csv(csv)
+            if "Timestamp" in df.columns and not df.empty:
+                # Convertimos a datetime
+                ts = pd.to_datetime(df["Timestamp"]).max()
+                fechas_maximas.append(ts)
+        except Exception:
+            continue
+
+    if fechas_maximas:
+        ultima = max(fechas_maximas)
+        # OJO: Si la última fecha es 2024-11-25 00:00:00 (que era el 24:00 del 24),
+        # significa que tenemos datos COMPLETOS hasta el 24.
+        # Pero el archivo del 25 empieza a las 01:00.
+        # Para seguridad, retornamos la fecha base (sin hora)
+        return ultima.replace(hour=0, minute=0, second=0)
+
+    return None
+
+
+def procesar_excel_a_tidy(f_handle, fecha_carpeta, subestaciones_target):
+    """Procesa un Excel individual y filtra por subestaciones."""
+    try:
+        df_raw = pd.read_excel(f_handle, header=None, engine="openpyxl")
+    except Exception:
+        return None
+
+    # Buscar header
+    fila_header = None
+    for idx, row in df_raw.head(50).iterrows():
+        if row.astype(str).str.contains(KEYWORD_HEADER, regex=False).any():
+            fila_header = idx
+            break
 
     if fila_header is None:
         return None
 
-    # 3. Slicing y Headers
+    # Limpieza básica
     df_data = df_raw.iloc[fila_header + 1 :].copy()
     df_data.columns = df_raw.iloc[fila_header]
 
-    # 4. Renombrar columnas críticas
-    # Normalizamos nombres para que el código sea agnóstico a variaciones
+    # Renombrar columnas
     cols_map = {}
     for c in df_data.columns:
         c_str = str(c).strip()
@@ -53,142 +110,210 @@ def procesar_excel_a_tidy(f_handle, fecha_carpeta):
 
     df_data.rename(columns=cols_map, inplace=True)
 
-    # Fallback si no encontró 'Subestacion'
     if "Subestacion" not in df_data.columns:
-        df_data.rename(columns={df_data.columns[0]: "Subestacion"}, inplace=True)
+        return None
 
-    # 5. LIMPIEZA DE FILAS (El filtro de seguridad que añadimos antes)
+    # Filtrar Subestaciones
     df_data["Subestacion"] = df_data["Subestacion"].astype(str).str.strip()
-    mask = (
-        (df_data["Subestacion"].str.len() > 2)
-        & (df_data["Subestacion"].str.len() < 80)
-        & (~df_data["Subestacion"].str.upper().str.contains("TOTAL", na=False))
-        & (df_data["Subestacion"] != "nan")
-    )
-    df_clean = df_data[mask].copy()
 
-    # 6. INYECCIÓN DE FECHA (Antes del Melt)
-    df_clean["Fecha"] = fecha_carpeta
+    if subestaciones_target:
+        # Filtro estricto
+        df_data = df_data[df_data["Subestacion"].isin(subestaciones_target)].copy()
 
-    # 7. TRANSFORMACIÓN A FORMATO LARGO (MELT) 🧠
-    # Identificamos columnas que NO son horas (las que mantendremos fijas)
+    if df_data.empty:
+        return None
+
+    # Inyectar Fecha Base
+    df_data["Fecha"] = fecha_carpeta
+
+    # Melt
     id_vars = ["Fecha", "Subestacion", "Max_Diario_MW", "Hora_Pico_Reg"]
-
-    # --- CORRECCIÓN CRÍTICA AQUÍ ---
-    # Antes: Tomaba todo lo que sobraba (incluyendo la columna TOTAL).
-    # Ahora: Solo aceptamos columnas que sean estrictamente "DosNumeros:DosNumeros"
     value_vars = [
         c
-        for c in df_clean.columns
-        if c not in id_vars
-        and re.match(r"^\d{2}:\d{2}$", str(c).strip())  # <--- EL FILTRO NUEVO
+        for c in df_data.columns
+        if c not in id_vars and re.match(r"^\d{2}:\d{2}$", str(c).strip())
     ]
 
-    df_melted = df_clean.melt(
-        id_vars=id_vars,
-        value_vars=value_vars,
-        var_name="Hora_Str",  # La columna antigua (01:00) pasa a ser dato aquí
-        value_name="MW",  # El valor de la celda pasa aquí
+    df_melted = df_data.melt(
+        id_vars=id_vars, value_vars=value_vars, var_name="Hora_Str", value_name="MW"
     )
 
     return df_melted
 
 
 def corregir_fechas_y_tipos(df):
-    """
-    Función vectorizada para arreglar el problema de las '24:00' y crear Timestamp.
-    """
-    # 1. Limpieza de MW (Convertir a numérico, forzar errores a NaN)
-    df["MW"] = pd.to_numeric(df["MW"], errors="coerce")
+    """Maneja la lógica de 24:00 -> 00:00 del día siguiente."""
+    df["MW"] = pd.to_numeric(df["MW"], errors="coerce").fillna(0)
 
-    # 2. Manejo de la hora "24:00"
-    # Convertimos la hora string a algo manipulable
-    # Creamos una bandera para las filas que son "24:00"
+    # Detectar 24:00
     es_24 = df["Hora_Str"].astype(str).str.contains("24:00")
-
-    # Reemplazamos visualmente 24:00 por 00:00 para que Pandas no explote
     df.loc[es_24, "Hora_Str"] = "00:00"
 
-    # 3. Creación del Timestamp Maestro
-    # Convertimos Fecha (str) + Hora (str) a Datetime real
-    # dayfirst=True ayuda si la fecha viene como DD/MM/YYYY, pero YYYY-MM-DD es seguro
+    # Crear Timestamp
     df["Timestamp"] = pd.to_datetime(
         df["Fecha"].astype(str) + " " + df["Hora_Str"].astype(str), errors="coerce"
     )
 
-    # 4. CORRECCIÓN LÓGICA DE FECHA
-    # Si era "24:00", significa que es el inicio del día siguiente
+    # Sumar día a las que eran 24:00
     df.loc[es_24, "Timestamp"] += timedelta(days=1)
 
-    # 5. Generar columnas auxiliares limpias (Opcional, pero pediste separar)
+    # Columnas auxiliares
     df["Fecha_Real"] = df["Timestamp"].dt.date
     df["Hora_Real"] = df["Timestamp"].dt.time
 
-    # 6. Ordenar y Seleccionar
-    cols_orden = [
+    cols = [
         "Timestamp",
         "Subestacion",
         "MW",
         "Max_Diario_MW",
-        "Hora_Pico_Reg",  # Datos agregados
+        "Hora_Pico_Reg",
         "Fecha_Real",
-        "Hora_Real",  # Datos auxiliares
+        "Hora_Real",
     ]
-    return df[cols_orden].sort_values(["Subestacion", "Timestamp"])
+    return df[cols].sort_values("Timestamp")
+
+
+def resamplear_dataframe(df):
+    """
+    Toma un DataFrame de una subestación, crea grilla de 3 min e interpola (PCHIP).
+    """
+    if df.empty:
+        return df
+
+    # Asegurar índice
+    df = df.set_index("Timestamp").sort_index()
+
+    # Resampleo a 3 min
+    try:
+        df_resampled = df.resample("3min").asfreq()
+    except ValueError:
+        # Si hay duplicados en el índice, no se puede resamplear directo.
+        # Nos quedamos con el último valor.
+        df = df[~df.index.duplicated(keep="last")]
+        df_resampled = df.resample("3min").asfreq()
+
+    # Interpolación PCHIP
+    # Requiere scipy
+    try:
+        df_resampled["MW"] = df_resampled["MW"].interpolate(
+            method="pchip", limit_direction="both"
+        )
+    except ImportError:
+        print("❌ Error: Falta 'scipy'. Instala con: pip install scipy")
+        return df.reset_index()  # Devolvemos sin cambios si falla
+    except Exception as e:
+        print(f"⚠️ Error interpolando: {e}")
+        # Fallback a lineal si falla pchip
+        df_resampled["MW"] = df_resampled["MW"].interpolate(method="linear")
+
+    # Relleno de metadatos (Forward Fill + Backfill para inicio de día)
+    cols_estaticas = ["Subestacion", "Max_Diario_MW", "Hora_Pico_Reg", "Fecha_Real"]
+    cols_a_usar = [c for c in cols_estaticas if c in df_resampled.columns]
+
+    # CORRECCIÓN CLAVE: Usamos bfill() primero para que el hueco de 00:00-01:00
+    # tome los valores del "futuro" (01:00) y no del pasado.
+    df_resampled[cols_a_usar] = (
+        df_resampled[cols_a_usar].bfill().ffill().infer_objects(copy=False)
+    )
+
+    # Limpieza
+    df_resampled.dropna(subset=["Subestacion"], inplace=True)
+    df_resampled["Hora_Real"] = df_resampled.index.time
+
+    return df_resampled.reset_index()
 
 
 def main_procesamiento():
     RUTA_SALIDA.mkdir(parents=True, exist_ok=True)
-    print(f"🚀 Iniciando ETL Tidy (Largo) en: {RUTA_DATOS_RAW}")
+    print("🚀 INICIANDO PROCESAMIENTO INTELIGENTE + RESAMPLEO (3min)...")
 
-    all_data = []
+    # 1. Cargar Configuración
+    target_subs = cargar_subestaciones_objetivo()
+    ultima_fecha = obtener_ultima_fecha_procesada()
 
-    for root, _, files in os.walk(RUTA_DATOS_RAW):
-        zips = [f for f in files if f.lower().endswith(".zip")]
-        for file in zips:
-            ruta_zip = Path(root) / file
-            fecha_str = ruta_zip.parent.name  # Ej: 2024-09-01
+    if ultima_fecha:
+        print(f"📅 Última fecha detectada: {ultima_fecha.date()}")
+    else:
+        print("✨ Procesamiento inicial (desde cero).")
 
+    nuevos_datos = []
+    archivos_procesados = 0
+
+    # 2. Escanear Archivos Raw
+    # Ordenamos carpetas para procesar cronológicamente
+    carpetas = sorted(
+        [d for d in RUTA_DATOS_RAW.iterdir() if d.is_dir()], key=lambda x: x.name
+    )
+
+    for carpeta in carpetas:
+        try:
+            fecha_carpeta = datetime.strptime(carpeta.name, "%Y-%m-%d")
+        except ValueError:
+            continue  # Ignorar carpetas que no sean fecha
+
+        # FILTRO INCREMENTAL SEGURO:
+        if ultima_fecha and fecha_carpeta < (ultima_fecha - timedelta(days=2)):
+            continue
+
+        print(f"   📂 Procesando: {carpeta.name}...", end=" ")
+
+        zips = list(carpeta.glob("*.zip"))
+        for zip_file in zips:
             try:
-                with zipfile.ZipFile(ruta_zip, "r") as z:
+                with zipfile.ZipFile(zip_file, "r") as z:
                     excels = [f for f in z.namelist() if f.endswith((".xlsx", ".xls"))]
-                    for excel_name in excels:
-                        with z.open(excel_name) as f:
-                            # Procesamos y obtenemos formato largo inmediatamente
-                            df_part = procesar_excel_a_tidy(f, fecha_str)
-                            if df_part is not None and not df_part.empty:
-                                all_data.append(df_part)
+                    for excel in excels:
+                        with z.open(excel) as f:
+                            df_part = procesar_excel_a_tidy(
+                                f, carpeta.name, target_subs
+                            )
+                            if df_part is not None:
+                                nuevos_datos.append(df_part)
             except Exception as e:
-                print(f"⚠️ Error en {file}: {e}")
+                print(f"❌ Error zip {zip_file.name}: {e}")
 
-    if not all_data:
-        print("No se encontraron datos.")
+        print("OK")
+        archivos_procesados += 1
+
+    if not nuevos_datos:
+        print("💤 No hay datos nuevos para procesar.")
         return
 
-    print(f"📦 Consolidando y calculando fechas para {len(all_data)} fragmentos...")
-
-    # Concatenación Masiva
-    df_total = pd.concat(all_data, ignore_index=True)
-
-    # Aplicar correcciones de tiempo (Vectorizado = Rápido)
+    print(f"📦 Consolidando {len(nuevos_datos)} fragmentos...")
+    df_total = pd.concat(nuevos_datos, ignore_index=True)
     df_final = corregir_fechas_y_tipos(df_total)
 
-    # Guardar por subestación
-    print("💾 Guardando CSVs optimizados...")
-    for subestacion, df_sub in df_final.groupby("Subestacion"):
-        try:
-            safe_name = re.sub(r"[^\w\s-]", "", str(subestacion)).strip()
-            if not safe_name:
-                continue
+    # 3. Guardado Inteligente (Append) + Resampleo
+    print("💾 Actualizando CSVs (con resampleo)...")
 
-            # Guardamos
-            ruta_csv = RUTA_SALIDA / f"{safe_name}.csv"
-            df_sub.to_csv(ruta_csv, index=False, encoding="utf-8-sig")
+    for subestacion, df_new in df_final.groupby("Subestacion"):
+        safe_name = re.sub(r"[^\w\s-]", "", str(subestacion)).strip()
+        if not safe_name:
+            continue
 
-        except Exception as e:
-            print(f"❌ Error al guardar {subestacion}: {e}")
+        # APLICAMOS RESAMPLEO AQUÍ
+        df_new_resampled = resamplear_dataframe(df_new)
 
-    print("\n✨ ¡Proceso Tidy Completado! Datos listos para graficar.")
+        ruta_csv = RUTA_SALIDA / f"{safe_name}_3min.csv"
+
+        if ruta_csv.exists():
+            # Cargar existente
+            df_old = pd.read_csv(ruta_csv)
+            df_old["Timestamp"] = pd.to_datetime(df_old["Timestamp"])
+
+            # Concatenar
+            df_combined = pd.concat([df_old, df_new_resampled], ignore_index=True)
+
+            # Eliminar duplicados (Misma Subestacion y Mismo Timestamp)
+            df_combined.drop_duplicates(subset=["Timestamp"], keep="last", inplace=True)
+            # Ordenar
+            df_combined.sort_values("Timestamp", inplace=True)
+        else:
+            df_combined = df_new_resampled
+
+        df_combined.to_csv(ruta_csv, index=False, encoding="utf-8-sig")
+
+    print(f"✨ ¡Listo! Se procesaron {archivos_procesados} días nuevos.")
 
 
 if __name__ == "__main__":
