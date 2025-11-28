@@ -109,9 +109,9 @@ st.markdown(
 RUTA_DATOS_CSV = Path(r"E:\13_DGA\Demo_Normas_DGA\data\SE_Carga_3min")
 RUTA_DATOS_PARQUET = Path(r"E:\13_DGA\Demo_Normas_DGA\data\SE_Carga_3min_parquet")
 RUTA_CLIMA_PARQUET = Path(r"E:\13_DGA\Demo_Normas_DGA\data\SE_Clima_3min_parquet")
-SCRIPT_SCRAP = Path(r"E:\13_DGA\Demo_Normas_DGA\src\data_change\scrap_cndc.py")
-SCRIPT_PROCESAR = Path(r"E:\13_DGA\Demo_Normas_DGA\src\data_change\procesar_datos.py")
-SCRIPT_CLIMA = Path(r"E:\13_DGA\Demo_Normas_DGA\src\data_change\scrap_clima.py")
+SCRIPT_SCRAP = Path(r"E:\13_DGA\Demo_Normas_DGA\src\etl\scrap_cndc.py")
+SCRIPT_PROCESAR = Path(r"E:\13_DGA\Demo_Normas_DGA\src\etl\procesar_datos.py")
+SCRIPT_CLIMA = Path(r"E:\13_DGA\Demo_Normas_DGA\src\etl\scrap_clima.py")
 
 
 # --- MOTOR DE CÁLCULO (ENGINEERING CORE) ---

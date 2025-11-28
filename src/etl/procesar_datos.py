@@ -329,9 +329,59 @@ def main_procesamiento():
         RUTA_SALIDA_PARQUET.mkdir(parents=True, exist_ok=True)
 
         ruta_parquet = RUTA_SALIDA_PARQUET / f"{safe_name}_3min.parquet"
+        # Fix PyArrow: Convert time objects to string
+        if "Hora_Real" in df_combined.columns:
+            df_combined["Hora_Real"] = df_combined["Hora_Real"].astype(str)
         df_combined.to_parquet(ruta_parquet, index=False)
 
     print(f"[DONE] ¡Listo! Se procesaron {archivos_procesados} días nuevos.")
+
+    # 4. Verificación Final de Consistencia (CSV vs Parquet)
+    verificar_consistencia_parquet()
+
+
+def verificar_consistencia_parquet():
+    """
+    Asegura que para cada CSV exista un Parquet actualizado.
+    Si el CSV es más nuevo que el Parquet (o el Parquet no existe), lo regenera.
+    """
+    print("[SYNC] Verificando consistencia CSV -> Parquet...")
+    RUTA_SALIDA_PARQUET = Path(r"E:\13_DGA\Demo_Normas_DGA\data\SE_Carga_3min_parquet")
+    RUTA_SALIDA_PARQUET.mkdir(parents=True, exist_ok=True)
+
+    csvs = list(RUTA_SALIDA.glob("*_3min.csv"))
+    count_fixed = 0
+
+    for csv_path in csvs:
+        parquet_path = RUTA_SALIDA_PARQUET / csv_path.name.replace(".csv", ".parquet")
+
+        necesita_update = False
+        if not parquet_path.exists():
+            necesita_update = True
+        else:
+            # Si el CSV es más nuevo que el Parquet (con un margen de 1 min)
+            if csv_path.stat().st_mtime > parquet_path.stat().st_mtime + 60:
+                necesita_update = True
+
+        if necesita_update:
+            try:
+                print(f"   [FIX] Regenerando Parquet para: {csv_path.name}")
+                df = pd.read_csv(csv_path)
+                # Asegurar tipos
+                if "Timestamp" in df.columns:
+                    df["Timestamp"] = pd.to_datetime(df["Timestamp"])
+                # Fix PyArrow: Convert time objects to string
+                if "Hora_Real" in df.columns:
+                    df["Hora_Real"] = df["Hora_Real"].astype(str)
+                df.to_parquet(parquet_path, index=False)
+                count_fixed += 1
+            except Exception as e:
+                print(f"   [X] Error regenerando {csv_path.name}: {e}")
+
+    if count_fixed > 0:
+        print(f"[SYNC] Se repararon {count_fixed} archivos Parquet desactualizados.")
+    else:
+        print("[SYNC] Todo en orden. Parquet sincronizado.")
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 # --- CONFIGURACIÓN ---
 RUTA_COORDENADAS = Path(
-    r"E:\13_DGA\Demo_Normas_DGA\data\subestacion_con_coordenadas.csv"
+    r"E:\13_DGA\Demo_Normas_DGA\data\SUBESTACIONES\subestacion_con_coordenadas.csv"
 )
 RUTA_CARGA_PARQUET = Path(r"E:\13_DGA\Demo_Normas_DGA\data\SE_Carga_3min_parquet")
 RUTA_CLIMA_PARQUET = Path(r"E:\13_DGA\Demo_Normas_DGA\data\SE_Clima_3min_parquet")
