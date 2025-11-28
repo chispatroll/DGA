@@ -32,9 +32,11 @@ def reparar_archivo(ruta_csv):
         for col in cols_existentes:
             # Transformamos la columna para que todos los registros del mismo día tengan el mismo valor
             # Usamos 'last' porque los datos del final del día (o 01:00 en adelante) son los correctos.
-            # 'first' sería peligroso porque el 00:00 está mal.
-            # 'mode' es más seguro pero más lento. 'last' es muy seguro dado el problema descrito.
-            df[col] = df.groupby("_Fecha_Calc")[col].transform("last")
+            # NOTA: Si el día solo tiene 1 registro (el 00:00 huérfano), lo dejamos vacío (None).
+            # Así, cuando lleguen los datos reales de ese día, se rellenará correctamente.
+            df[col] = df.groupby("_Fecha_Calc")[col].transform(
+                lambda x: x.iloc[-1] if len(x) > 1 else None
+            )
 
         # Limpieza
         df.drop(columns=["_Fecha_Calc"], inplace=True)
@@ -44,30 +46,30 @@ def reparar_archivo(ruta_csv):
         return True
 
     except Exception as e:
-        print(f"❌ Error en {ruta_csv.name}: {e}")
+        print(f"[X] Error en {ruta_csv.name}: {e}")
         return False
 
 
 def main():
-    print("🔧 INICIANDO REPARACIÓN DE METADATA...\n")
+    print("[TOOL] INICIANDO REPARACIÓN DE METADATA...\n")
 
     if not RUTA_CSVS.exists():
-        print(f"❌ No existe la carpeta: {RUTA_CSVS}")
+        print(f"[X] No existe la carpeta: {RUTA_CSVS}")
         return
 
     archivos = list(RUTA_CSVS.glob("*_3min.csv"))
-    print(f"📂 Encontrados {len(archivos)} archivos.")
+    print(f"[DIR] Encontrados {len(archivos)} archivos.")
 
     reparados = 0
     for archivo in archivos:
         print(f"   Reparando: {archivo.name}...", end=" ")
         if reparar_archivo(archivo):
-            print("✅ OK")
+            print("[OK]")
             reparados += 1
         else:
-            print("⚠️ Saltado")
+            print("[SKIP] Saltado")
 
-    print(f"\n✨ ¡Listo! Se repararon {reparados} archivos.")
+    print(f"\n[DONE] ¡Listo! Se repararon {reparados} archivos.")
 
 
 if __name__ == "__main__":

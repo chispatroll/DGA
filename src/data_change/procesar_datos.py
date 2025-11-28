@@ -21,7 +21,7 @@ def cargar_subestaciones_objetivo():
     """Carga la lista de subestaciones a procesar desde un CSV."""
     if not ARCHIVO_SUBESTACIONES.exists():
         print(
-            f"⚠️ No se encontró {ARCHIVO_SUBESTACIONES}. Se procesarán TODAS (No recomendado)."
+            f"[WARN] No se encontró {ARCHIVO_SUBESTACIONES}. Se procesarán TODAS (No recomendado)."
         )
         return None
 
@@ -30,10 +30,10 @@ def cargar_subestaciones_objetivo():
         # Asumimos que la columna se llama 'Subestacion' o es la primera
         col = "Subestacion" if "Subestacion" in df.columns else df.columns[0]
         lista = df[col].astype(str).str.strip().unique().tolist()
-        print(f"🎯 Objetivo: {len(lista)} subestaciones cargadas.")
+        print(f"[TARGET] Objetivo: {len(lista)} subestaciones cargadas.")
         return lista
     except Exception as e:
-        print(f"❌ Error al leer subestaciones: {e}")
+        print(f"[X] Error al leer subestaciones: {e}")
         return None
 
 
@@ -53,7 +53,7 @@ def obtener_ultima_fecha_procesada():
     if not csvs:
         return None
 
-    print("🕵️ Buscando última fecha procesada...")
+    print("[SEARCH] Buscando última fecha procesada...")
     for csv in csvs[:5]:  # Revisamos los primeros 5 para no tardar
         try:
             # Leemos solo las ultimas filas para ser rápido
@@ -199,22 +199,23 @@ def resamplear_dataframe(df):
             method="pchip", limit_direction="both"
         )
     except ImportError:
-        print("❌ Error: Falta 'scipy'. Instala con: pip install scipy")
+        print("[X] Error: Falta 'scipy'. Instala con: pip install scipy")
         return df.reset_index()  # Devolvemos sin cambios si falla
     except Exception as e:
-        print(f"⚠️ Error interpolando: {e}")
+        print(f"[WARN] Error interpolando: {e}")
         # Fallback a lineal si falla pchip
         df_resampled["MW"] = df_resampled["MW"].interpolate(method="linear")
 
-    # Relleno de metadatos (Forward Fill + Backfill para inicio de día)
-    cols_estaticas = ["Subestacion", "Max_Diario_MW", "Hora_Pico_Reg", "Fecha_Real"]
+    # Relleno de metadatos (Corrección robusta para 00:00)
+    # 1. Recalcular Fecha_Real para todas las filas
+    df_resampled["Fecha_Real"] = df_resampled.index.date
+
+    # 2. Propagar metadatos usando el último valor válido del día
+    cols_estaticas = ["Subestacion", "Max_Diario_MW", "Hora_Pico_Reg"]
     cols_a_usar = [c for c in cols_estaticas if c in df_resampled.columns]
 
-    # CORRECCIÓN CLAVE: Usamos bfill() primero para que el hueco de 00:00-01:00
-    # tome los valores del "futuro" (01:00) y no del pasado.
-    df_resampled[cols_a_usar] = (
-        df_resampled[cols_a_usar].bfill().ffill().infer_objects(copy=False)
-    )
+    for col in cols_a_usar:
+        df_resampled[col] = df_resampled.groupby("Fecha_Real")[col].transform("last")
 
     # Limpieza
     df_resampled.dropna(subset=["Subestacion"], inplace=True)
@@ -225,16 +226,16 @@ def resamplear_dataframe(df):
 
 def main_procesamiento():
     RUTA_SALIDA.mkdir(parents=True, exist_ok=True)
-    print("🚀 INICIANDO PROCESAMIENTO INTELIGENTE + RESAMPLEO (3min)...")
+    print("[START] INICIANDO PROCESAMIENTO INTELIGENTE + RESAMPLEO (3min)...")
 
     # 1. Cargar Configuración
     target_subs = cargar_subestaciones_objetivo()
     ultima_fecha = obtener_ultima_fecha_procesada()
 
     if ultima_fecha:
-        print(f"📅 Última fecha detectada: {ultima_fecha.date()}")
+        print(f"[DATE] Última fecha detectada: {ultima_fecha.date()}")
     else:
-        print("✨ Procesamiento inicial (desde cero).")
+        print("[INIT] Procesamiento inicial (desde cero).")
 
     nuevos_datos = []
     archivos_procesados = 0
@@ -255,7 +256,7 @@ def main_procesamiento():
         if ultima_fecha and fecha_carpeta < (ultima_fecha - timedelta(days=2)):
             continue
 
-        print(f"   📂 Procesando: {carpeta.name}...", end=" ")
+        print(f"   [DIR] Procesando: {carpeta.name}...", end=" ")
 
         zips = list(carpeta.glob("*.zip"))
         for zip_file in zips:
@@ -270,21 +271,21 @@ def main_procesamiento():
                             if df_part is not None:
                                 nuevos_datos.append(df_part)
             except Exception as e:
-                print(f"❌ Error zip {zip_file.name}: {e}")
+                print(f"[X] Error zip {zip_file.name}: {e}")
 
         print("OK")
         archivos_procesados += 1
 
     if not nuevos_datos:
-        print("💤 No hay datos nuevos para procesar.")
+        print("[SLEEP] No hay datos nuevos para procesar.")
         return
 
-    print(f"📦 Consolidando {len(nuevos_datos)} fragmentos...")
+    print(f"[PKG] Consolidando {len(nuevos_datos)} fragmentos...")
     df_total = pd.concat(nuevos_datos, ignore_index=True)
     df_final = corregir_fechas_y_tipos(df_total)
 
     # 3. Guardado Inteligente (Append) + Resampleo
-    print("💾 Actualizando CSVs (con resampleo)...")
+    print("[SAVE] Actualizando CSVs (con resampleo)...")
 
     for subestacion, df_new in df_final.groupby("Subestacion"):
         safe_name = re.sub(r"[^\w\s-]", "", str(subestacion)).strip()
@@ -311,9 +312,26 @@ def main_procesamiento():
         else:
             df_combined = df_new_resampled
 
+        # --- CORRECCIÓN FINAL (Unir costuras) ---
+        # Aseguramos que las 00:00 (que venían del día anterior) tomen la metadata del día actual
+        df_combined["Fecha_Real"] = df_combined["Timestamp"].dt.date
+        cols_meta = ["Subestacion", "Max_Diario_MW", "Hora_Pico_Reg"]
+        for col in [c for c in cols_meta if c in df_combined.columns]:
+            df_combined[col] = df_combined.groupby("Fecha_Real")[col].transform("last")
+        # ----------------------------------------
+
         df_combined.to_csv(ruta_csv, index=False, encoding="utf-8-sig")
 
-    print(f"✨ ¡Listo! Se procesaron {archivos_procesados} días nuevos.")
+        # Guardar también en Parquet (En carpeta separada)
+        RUTA_SALIDA_PARQUET = Path(
+            r"E:\13_DGA\Demo_Normas_DGA\data\SE_Carga_3min_parquet"
+        )
+        RUTA_SALIDA_PARQUET.mkdir(parents=True, exist_ok=True)
+
+        ruta_parquet = RUTA_SALIDA_PARQUET / f"{safe_name}_3min.parquet"
+        df_combined.to_parquet(ruta_parquet, index=False)
+
+    print(f"[DONE] ¡Listo! Se procesaron {archivos_procesados} días nuevos.")
 
 
 if __name__ == "__main__":

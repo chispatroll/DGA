@@ -3,4 +3,8 @@ runOnSave = true
 
 [theme]
 base = "dark"
-primaryColor = "#F63366"
+primaryColor = "#238636"
+backgroundColor = "#0e1117"
+secondaryBackgroundColor = "#161b22"
+textColor = "#f0f2f6"
+font = "sans serif"
