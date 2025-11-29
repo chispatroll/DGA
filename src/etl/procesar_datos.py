@@ -7,10 +7,13 @@ import re
 from datetime import datetime, timedelta
 
 # --- CONFIGURACIÓN ---
-RUTA_DATOS_RAW = Path(r"E:\13_DGA\Demo_Normas_DGA\data\cndc")
-RUTA_SALIDA = Path(r"E:\13_DGA\Demo_Normas_DGA\data\SE_Carga_3min")
-ARCHIVO_SUBESTACIONES = Path(
-    r"E:\13_DGA\Demo_Normas_DGA\data\SUBESTACIONES\subestacion_con_coordenadas.csv"
+# Definir raíz del proyecto (2 niveles arriba: src/etl -> src -> root)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+RUTA_DATOS_RAW = PROJECT_ROOT / "data" / "cndc"
+RUTA_SALIDA = PROJECT_ROOT / "data" / "SE_Carga_3min"
+ARCHIVO_SUBESTACIONES = (
+    PROJECT_ROOT / "data" / "SUBESTACIONES" / "subestacion_con_coordenadas.csv"
 )
 KEYWORD_HEADER = "RETIROS (MWh)"
 
@@ -323,9 +326,7 @@ def main_procesamiento():
         df_combined.to_csv(ruta_csv, index=False, encoding="utf-8-sig")
 
         # Guardar también en Parquet (En carpeta separada)
-        RUTA_SALIDA_PARQUET = Path(
-            r"E:\13_DGA\Demo_Normas_DGA\data\SE_Carga_3min_parquet"
-        )
+        RUTA_SALIDA_PARQUET = PROJECT_ROOT / "data" / "SE_Carga_3min_parquet"
         RUTA_SALIDA_PARQUET.mkdir(parents=True, exist_ok=True)
 
         ruta_parquet = RUTA_SALIDA_PARQUET / f"{safe_name}_3min.parquet"
@@ -346,7 +347,7 @@ def verificar_consistencia_parquet():
     Si el CSV es más nuevo que el Parquet (o el Parquet no existe), lo regenera.
     """
     print("[SYNC] Verificando consistencia CSV -> Parquet...")
-    RUTA_SALIDA_PARQUET = Path(r"E:\13_DGA\Demo_Normas_DGA\data\SE_Carga_3min_parquet")
+    RUTA_SALIDA_PARQUET = PROJECT_ROOT / "data" / "SE_Carga_3min_parquet"
     RUTA_SALIDA_PARQUET.mkdir(parents=True, exist_ok=True)
 
     csvs = list(RUTA_SALIDA.glob("*_3min.csv"))

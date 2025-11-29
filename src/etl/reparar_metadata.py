@@ -2,7 +2,10 @@ import pandas as pd
 from pathlib import Path
 
 # --- CONFIGURACIÓN ---
-RUTA_CSVS = Path(r"E:\13_DGA\Demo_Normas_DGA\data\SE_Carga_3min")
+# Definir raíz del proyecto (2 niveles arriba: src/etl -> src -> root)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+RUTA_CSVS = PROJECT_ROOT / "data" / "SE_Carga_3min"
 
 
 def reparar_archivo(ruta_csv):

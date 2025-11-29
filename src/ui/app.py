@@ -106,12 +106,17 @@ st.markdown(
 )
 
 # --- CONSTANTES ---
-RUTA_DATOS_CSV = Path(r"E:\13_DGA\Demo_Normas_DGA\data\SE_Carga_3min")
-RUTA_DATOS_PARQUET = Path(r"E:\13_DGA\Demo_Normas_DGA\data\SE_Carga_3min_parquet")
-RUTA_CLIMA_PARQUET = Path(r"E:\13_DGA\Demo_Normas_DGA\data\SE_Clima_3min_parquet")
-SCRIPT_SCRAP = Path(r"E:\13_DGA\Demo_Normas_DGA\src\etl\scrap_cndc.py")
-SCRIPT_PROCESAR = Path(r"E:\13_DGA\Demo_Normas_DGA\src\etl\procesar_datos.py")
-SCRIPT_CLIMA = Path(r"E:\13_DGA\Demo_Normas_DGA\src\etl\scrap_clima.py")
+# Definir raíz del proyecto (2 niveles arriba: src/ui -> src -> root)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+RUTA_DATOS_CSV = PROJECT_ROOT / "data" / "SE_Carga_3min"
+RUTA_DATOS_PARQUET = PROJECT_ROOT / "data" / "SE_Carga_3min_parquet"
+RUTA_CLIMA_PARQUET = PROJECT_ROOT / "data" / "SE_Clima_3min_parquet"
+
+# Scripts (src/etl/...)
+SCRIPT_SCRAP = PROJECT_ROOT / "src" / "etl" / "scrap_cndc.py"
+SCRIPT_PROCESAR = PROJECT_ROOT / "src" / "etl" / "procesar_datos.py"
+SCRIPT_CLIMA = PROJECT_ROOT / "src" / "etl" / "scrap_clima.py"
 
 
 # --- MOTOR DE CÁLCULO (ENGINEERING CORE) ---

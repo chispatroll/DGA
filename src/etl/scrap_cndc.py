@@ -4,7 +4,10 @@ from datetime import datetime, timedelta
 import time
 
 # --- CONFIGURACIÓN ---
-RUTA_BASE = Path(r"E:\13_DGA\Demo_Normas_DGA\data\cndc")
+# Definir raíz del proyecto (2 niveles arriba: src/etl -> src -> root)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+RUTA_BASE = PROJECT_ROOT / "data" / "cndc"
 # URL directa al ZIP. {} se reemplaza por ddmmyy (ej: 251124)
 BASE_URL = "https://www.cndc.bo/media/archivos/boletindiario/deener_{}.zip"
 
@@ -29,6 +32,8 @@ def obtener_ultima_fecha_registrada():
 
 def descargar_incremental():
     print("[INFO] ACTUALIZANDO CNDC (MODO DIRECTO)...")
+
+    RUTA_BASE.mkdir(parents=True, exist_ok=True)
 
     ultima_fecha = obtener_ultima_fecha_registrada()
     if ultima_fecha is None:
