@@ -14,3 +14,8 @@
    - Tazna.csv
 
 *Las siguientes subestaciones no se encuentran en la lista de subestaciones por razones de falta de datos de coordenadas*
+
+
+-Mazocruz
+-Yaguacua
+*No se encuentran en la pagina de el CNDC*
