@@ -10,6 +10,7 @@ st.set_page_config(page_title="Mi Primer Dashboard", layout="wide")
 # Buscamos la carpeta del proyecto (2 niveles arriba de este archivo)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RUTA_DATOS = PROJECT_ROOT / "data" / "SE_Carga_3min_parquet"
+RUTA_TRANSFORMADORES = PROJECT_ROOT / "data" / "TRANSFORMADORES"
 
 
 # --- 3. FUNCIONES DE CARGA DE DATOS ---
@@ -36,7 +37,7 @@ def cargar_datos_subestacion(nombre):
 @st.cache_data
 def cargar_metadatos_trafos():
     """Carga los metadatos de los transformadores."""
-    ruta_meta = PROJECT_ROOT / "data" / "metadatos_ATRs.csv"
+    ruta_meta = RUTA_TRANSFORMADORES / "metadatos_ATRs.csv"
     if ruta_meta.exists():
         return pd.read_csv(ruta_meta)
     return None
@@ -194,7 +195,7 @@ def main():
                     ),
                 },
                 disabled=True,
-                use_container_width=True,
+                width="stretch",
                 height=400,  # Altura fija para que se vea bien
             )
 
